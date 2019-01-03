@@ -1,15 +1,10 @@
-// Package opengraph implements and parses "The Open Graph Protocol" of web pages.
-// See http://ogp.me/ for more information.
 package opengraph
 
 import (
-	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"path"
 	"path/filepath"
-	"strings"
 
 	"golang.org/x/net/html"
 )
@@ -39,7 +34,6 @@ type OpenGraph struct {
 	Favicon string
 
 	// Utils
-	HTTPClient *http.Client `json:"-"`
 	Error      error        `json:"-"`
 }
 
@@ -52,7 +46,6 @@ type URL struct {
 // New creates new OpenGraph struct with specified URL.
 func New(rawurl string) *OpenGraph {
 	og := new(OpenGraph)
-	og.HTTPClient = http.DefaultClient
 	og.Image = []*OGImage{}
 	og.Video = []*OGVideo{}
 	og.Audio = []*OGAudio{}
@@ -65,36 +58,6 @@ func New(rawurl string) *OpenGraph {
 	}
 	og.URL = URL{Source: u.String(), URL: u}
 	return og
-}
-
-// Fetch creates and parses OpenGraph with specified URL.
-func Fetch(rawurl string, customHTTPClient ...*http.Client) (*OpenGraph, error) {
-
-	og := New(rawurl)
-	if og.Error != nil {
-		return og, og.Error
-	}
-
-	// Use custom http client if given
-	if len(customHTTPClient) != 0 {
-		og.HTTPClient = customHTTPClient[0]
-	}
-
-	res, err := og.HTTPClient.Get(og.URL.String())
-	if err != nil {
-		return og, err
-	}
-	defer res.Body.Close()
-
-	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") {
-		return og, fmt.Errorf("Content type must be text/html")
-	}
-
-	if err = og.Parse(res.Body); err != nil {
-		return og, err
-	}
-
-	return og, err
 }
 
 // Parse parses http.Response.Body and construct OpenGraph informations.
@@ -116,13 +79,14 @@ func (og *OpenGraph) satisfied() bool {
 }
 
 func (og *OpenGraph) walk(n *html.Node) error {
-
 	if og.satisfied() {
 		return nil
 	}
 
 	if n.Type == html.ElementNode {
 		switch n.Data {
+		case "body":
+			return nil
 		case "title":
 			return TitleTag(n).Contribute(og)
 		case "meta":

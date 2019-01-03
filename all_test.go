@@ -1,70 +1,68 @@
 package opengraph
 
 import (
-	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"bytes"
+	"io/ioutil"
+	"path"
+	"runtime"
 	"testing"
-
-	"github.com/otiai10/marmoset"
-	. "github.com/otiai10/mint"
 )
-
-func TestNew(t *testing.T) {
-	og := New(dummyServer(1).URL)
-	Expect(t, og).TypeOf("*opengraph.OpenGraph")
-	Expect(t, og.Error).ToBe(nil)
-
-	When(t, "invalid url is given", func(t *testing.T) {
-		og := New(":invalid_url")
-		Expect(t, og.Error).Not().ToBe(nil)
-	})
-}
 
 func TestFetch(t *testing.T) {
 
-	When(t, "invalid scheme is given", func(t *testing.T) {
-		_, err := Fetch(":invalid_url")
-		Expect(t, err).Not().ToBe(nil)
-	})
-	When(t, "invalid url is given", func(t *testing.T) {
-		_, err := Fetch("htt://xxx/yyy")
-		Expect(t, err).Not().ToBe(nil)
-	})
+	URL := "http://test.test/html/01.html"
 
-	s := dummyServer(1)
-	og, err := Fetch(s.URL)
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Error("Unexpected error")
+		t.Fail()
+		return
+	}
 
-	Expect(t, err).ToBe(nil)
-	Expect(t, og.Title).ToBe("Hello! Open Graph!!")
-	Expect(t, og.Type).ToBe("website")
-	Expect(t, og.URL.Source).ToBe(s.URL)
-	Expect(t, len(og.Image)).ToBe(1)
+	html := path.Join(path.Dir(filename), "./html/01.html")
 
-	Expect(t, og.Image[0].URL).ToBe("/images/01.png")
-	Expect(t, og.Favicon).ToBe("/images/01.favicon.png")
-	og.ToAbsURL()
-	Expect(t, og.Image[0].URL).ToBe(s.URL + "/images/01.png")
-	Expect(t, og.Favicon).ToBe(s.URL + "/images/01.favicon.png")
-}
+	body, err := ioutil.ReadFile(html)
+	if err != nil {
+		t.Error("File not found", err)
+		t.Fail()
+		return
+	}
 
-func TestFetch_02(t *testing.T) {
-	s := dummyServer(2)
-	og, err := Fetch(s.URL)
+	og := New(URL)
+	err = og.Parse(bytes.NewReader(body))
+	if err != nil {
+		t.Error("Unexpected error", err)
+		t.Fail()
+		return
+	}
 
-	Expect(t, err).ToBe(nil)
-	Expect(t, og.Title).ToBe("はいさいナイト")
-	Expect(t, og.Description).ToBe("All Genre Music Party")
-}
+	if og.Title != "Open Graph Title" {
+		t.Error("Invalid Title")
+		t.Fail()
+		return
+	}
 
-func dummyServer(id int) *httptest.Server {
-	marmoset.LoadViews("./testdata/html")
-	r := marmoset.NewRouter()
-	r.GET("/", func(w http.ResponseWriter, r *http.Request) {
-		marmoset.Render(w).HTML(fmt.Sprintf("%02d", id), nil)
-	})
-	r.GET("/case/01", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	})
-	return httptest.NewServer(r)
+	if og.Type != "website" {
+		t.Error("Invalid Type")
+		t.Fail()
+		return
+	}
+
+	if og.URL.Source != URL {
+		t.Error("Invalid URL")
+		t.Fail()
+		return
+	}
+
+	if len(og.Image) != 1 || og.Image[0].URL != "/images/01.png" {
+		t.Error("Invalid Image")
+		t.Fail()
+		return
+	}
+
+	if og.Favicon != "/images/01.favicon.png" {
+		t.Error("Invalid Favicon")
+		t.Fail()
+		return
+	}
 }
